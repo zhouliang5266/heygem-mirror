@@ -26,7 +26,16 @@ jobs:
       - name: Upload release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           TAG="mirror-${SAFE}"
-          gh release create "$TAG" --title "mirror $SAFE" --notes "source: ${{ github.event.inputs.image }}" --clobber || true
-          gh release upload "$TAG" /tmp/${SAFE}.gz.part-* --clobber
+          set -x
+          df -h /
+          gh release create "$TAG" --title "mirror $SAFE" --notes "source: ${{ github.event.inputs.image }}" || echo "create: 已存在或跳过"
+          OK=0
+          for i in 1 2 3 4 5; do
+            gh release upload "$TAG" /tmp/${SAFE}.gz.part-* --clobber && OK=1 && break
+            echo "upload 重试 $i"; sleep 15
+          done
+          [ "$OK" = "1" ] || { echo "upload 最终失败"; exit 1; }
+          gh release view "$TAG" --json assets --jq '.assets[].name'
