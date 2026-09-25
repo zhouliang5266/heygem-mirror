@@ -1,0 +1,32 @@
+name: mirror-image
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'Docker Hub image (name:tag)'
+        required: true
+permissions:
+  contents: write
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/hostedtoolcache /usr/share/dotnet /opt/ghc /usr/local/.ghc /usr/local/share/boost /usr/lib/jvm /usr/share/swift /usr/share/miniconda
+          df -h /
+      - name: Pull image
+        run: docker pull "${{ github.event.inputs.image }}"
+      - name: Save gzip split
+        run: |
+          SAFE=$(echo "${{ github.event.inputs.image }}" | tr '/:' '__')
+          docker save "${{ github.event.inputs.image }}" | gzip | split -b 1900m - "/tmp/${SAFE}.gz.part-"
+          ls -lh /tmp/ | head -20
+          echo "SAFE=$SAFE" >> $GITHUB_ENV
+      - name: Upload release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="mirror-${SAFE}"
+          gh release create "$TAG" --title "mirror $SAFE" --notes "source: ${{ github.event.inputs.image }}" --clobber || true
+          gh release upload "$TAG" /tmp/${SAFE}.gz.part-* --clobber
